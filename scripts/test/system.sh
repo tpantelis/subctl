@@ -18,7 +18,7 @@ function deploy_env_once() {
     printf "::group::Deploying the environment"
     make deploy SETTINGS="$SETTINGS" using="${USING}" -o package/.image.subctl
     declare_kubeconfig
-    echo "::endgroup::" 
+    echo "::endgroup::"
 }
 
 function _subctl() {
@@ -47,6 +47,41 @@ function test_subctl_gather() {
     echo "::endgroup::"
 }
 
+function check_service_exported() {
+    status=$(kubectl get serviceexport nginx-demo --context $cluster -n default -o=jsonpath='{.status.conditions[?(@.type=="Valid")].status}')
+    if [[ "$status" == "True" ]]; then
+        return 0
+    fi
+
+    sleep 1
+    return 1
+}
+
+function export_service() {
+    cat <<EOF | kubectl --context $cluster apply -f -
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: nginx-demo
+        namespace: default
+        labels:
+          app: nginx-demo
+      spec:
+        type: ClusterIP
+        selector:
+          app: nginx-demo
+        ports:
+        - protocol: TCP
+          name: http
+          port: 80
+          targetPort: 8080
+EOF
+
+    subctl export service --kubeconfig "${KUBECONFIGS_DIR}"/kind-config-$cluster --namespace default nginx-demo
+
+    with_retries 30 check_service_exported
+}
+
 ### Main ###
 
 subm_ns=submariner-operator
@@ -54,6 +89,10 @@ submariner_broker_ns=submariner-k8s-broker
 load_settings
 declare_kubeconfig
 deploy_env_once
+
+if [[ "${LIGHTHOUSE}" == true ]]; then
+    with_context "${clusters[0]}" export_service
+fi
 
 # Test subctl show invocations
 
