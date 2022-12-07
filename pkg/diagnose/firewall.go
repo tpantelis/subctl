@@ -212,28 +212,16 @@ func verifyConnectivity(localClusterInfo, remoteClusterInfo *cluster.Info, names
 		return err
 	}
 
-	destPort, err := getTargetPort(localClusterInfo.Submariner, localEndpoint, targetPort)
+	destPort, portFilter, err := getPortInfo(localClusterInfo, localEndpoint, targetPort, status)
 	if err != nil {
-		return status.Error(err, "Could not determine the target port")
-	}
-
-	portFilter := fmt.Sprintf("dst port %d", destPort)
-
-	lbNodePort, err := getLbNodePort(localClusterInfo, localEndpoint, targetPort)
-	if err != nil {
-		return status.Error(err, "Could not determine LB node port")
-	}
-
-	// When SM deployed using LB the encapsulated and nat discovery traffic received in some platforms on LB nodeport
-	if lbNodePort != 0 {
-		portFilter += fmt.Sprintf(" or dst port %d ", lbNodePort)
+		return err
 	}
 
 	clientMessage := string(uuid.NewUUID())[0:8]
 	// The following construct ensures that tcpdump will be stopped as soon as the message is seen, instead of waiting
 	// for a timeout; but when the message isn't seen, it will be killed once the timeout expires
 	podCommand := fmt.Sprintf(
-		"(tcpdump --immediate-mode -ln -Q in -A -s 100 -i any udp and %s & pid=\"$!\"; (sleep %d; kill \"$pid\") &) | grep -m1 '%s'",
+		"(tcpdump -bogus --immediate-mode -ln -Q in -A -s 100 -i any udp and %s & pid=\"$!\"; (sleep %d; kill \"$pid\") &) | sed '/%s/q'",
 		portFilter, options.ValidationTimeout, clientMessage)
 
 	sPod, err := spawnSnifferPodOnNode(localClusterInfo.ClientProducer.ForKubernetes(), gwNodeName, namespace, podCommand,
@@ -271,17 +259,39 @@ func verifyConnectivity(localClusterInfo, remoteClusterInfo *cluster.Info, names
 	}
 
 	if options.VerboseOutput {
-		status.Success("tcpdump output from sniffer pod on Gateway node")
-		status.Success(sPod.PodOutput)
+		status.Success("tcpdump output from sniffer pod on Gateway node:\n%s", sPod.PodOutput)
 	}
 
 	if !strings.Contains(sPod.PodOutput, clientMessage) {
 		return status.Error(fmt.Errorf("the tcpdump output from the sniffer pod does not include the message"+
 			" sent from client pod. Please check that your firewall configuration allows UDP/%d traffic"+
-			" on the %q node", destPort, localEndpoint.Spec.Hostname), "Error")
+			" on the %q node. Actual pod output: \n%s", destPort, localEndpoint.Spec.Hostname, sPod.PodOutput), "")
 	}
 
 	return nil
+}
+
+func getPortInfo(localClusterInfo *cluster.Info, localEndpoint *subv1.Endpoint, targetPort TargetPort,
+	status reporter.Interface,
+) (int32, string, error) {
+	destPort, err := getTargetPort(localClusterInfo.Submariner, localEndpoint, targetPort)
+	if err != nil {
+		return 0, "", status.Error(err, "Could not determine the target port")
+	}
+
+	portFilter := fmt.Sprintf("dst port %d", destPort)
+
+	lbNodePort, err := getLbNodePort(localClusterInfo, localEndpoint, targetPort)
+	if err != nil {
+		return 0, "", status.Error(err, "Could not determine LB node port")
+	}
+
+	// When SM deployed using LB the encapsulated and nat discovery traffic received in some platforms on LB nodeport
+	if lbNodePort != 0 {
+		portFilter += fmt.Sprintf(" or dst port %d ", lbNodePort)
+	}
+
+	return destPort, portFilter, nil
 }
 
 func getTargetPort(submariner *v1alpha1.Submariner, endpoint *subv1.Endpoint, tgtport TargetPort) (int32, error) {
