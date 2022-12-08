@@ -234,7 +234,7 @@ func verifyConnectivity(localClusterInfo, remoteClusterInfo *cluster.Info, names
 	// for a timeout; but when the message isn't seen, it will be killed once the timeout expires
 	podCommand := fmt.Sprintf(
 		"(tcpdump --immediate-mode -ln -Q in -A -s 100 -i any udp and %s & pid=\"$!\"; (sleep %d; kill \"$pid\") &) | sed '/%s/q'",
-		portFilter, options.ValidationTimeout, clientMessage)
+		portFilter, options.ValidationTimeout, "blah")
 
 	sPod, err := spawnSnifferPodOnNode(localClusterInfo.ClientProducer.ForKubernetes(), gwNodeName, namespace, podCommand,
 		localClusterInfo.GetImageRepositoryInfo())
@@ -274,7 +274,7 @@ func verifyConnectivity(localClusterInfo, remoteClusterInfo *cluster.Info, names
 		status.Success("tcpdump output from sniffer pod on Gateway node:\n%s", sPod.PodOutput)
 	}
 
-	if !strings.Contains(sPod.PodOutput, clientMessage) {
+	if !strings.Contains(sPod.PodOutput, "blah") {
 		return status.Error(fmt.Errorf("the tcpdump output from the sniffer pod does not include the message"+
 			" sent from client pod. Please check that your firewall configuration allows UDP/%d traffic"+
 			" on the %q node. Actual pod output: \n%s", destPort, localEndpoint.Spec.Hostname, sPod.PodOutput), "")
