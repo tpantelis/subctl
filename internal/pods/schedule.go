@@ -19,16 +19,22 @@ limitations under the License.
 package pods
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	goerrors "errors"
 	"fmt"
+	"io"
 
 	"github.com/pkg/errors"
+	"github.com/submariner-io/admiral/pkg/reporter"
 	"github.com/submariner-io/shipyard/test/e2e/framework"
 	"github.com/submariner-io/subctl/internal/cli"
 	"github.com/submariner-io/subctl/internal/constants"
 	"github.com/submariner-io/subctl/pkg/image"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -189,21 +195,27 @@ func (np *Scheduled) Delete() {
 func (np *Scheduled) awaitUntilScheduled() error {
 	pods := np.Config.ClientSet.CoreV1().Pods(np.Config.Namespace)
 
-	pod, _, err := framework.AwaitResultOrError("await pod ready",
+	pod, errmsg, err := framework.AwaitResultOrError("await pod ready",
 		func() (interface{}, error) {
 			return pods.Get(context.TODO(), np.Pod.Name, metav1.GetOptions{})
 		}, func(result interface{}) (bool, string, error) {
 			pod := result.(*v1.Pod)
 			if pod.Status.Phase != v1.PodRunning && pod.Status.Phase != v1.PodSucceeded {
+				statusStr, _ := json.MarshalIndent(pod.Status, "", "  ")
 				if pod.Status.Phase != v1.PodPending {
-					return false, "", fmt.Errorf("unexpected pod phase %v - expected %v or %v",
-						pod.Status.Phase, v1.PodPending, v1.PodRunning)
+					return false, "", fmt.Errorf("expected pod phase %v or %v. Actual pod status: %s",
+						v1.PodPending, v1.PodRunning, statusStr)
 				}
-				return false, fmt.Sprintf("Pod %q is still pending", pod.Name), nil
+
+				return false, fmt.Sprintf("Pod %q is still pending: Pod status: %s", pod.Name, statusStr), nil
 			}
 
 			return true, "", nil // pod is either running or has completed its execution
 		})
+	if goerrors.Is(err, wait.ErrWaitTimeout) {
+		return errors.New(errmsg)
+	}
+
 	if err != nil {
 		return err
 	}
@@ -242,6 +254,28 @@ func (np *Scheduled) AwaitCompletion() error {
 	}
 
 	return nil
+}
+
+func (np *Scheduled) GetPodLog(status reporter.Interface) string {
+	logRequest := np.Config.ClientSet.CoreV1().Pods(np.Config.Namespace).GetLogs(np.Pod.Name, nil)
+
+	logStream, err := logRequest.Stream(context.TODO())
+	if err != nil {
+		status.Failure("Error opening pod log stream: %v", err)
+		return ""
+	}
+
+	defer logStream.Close()
+
+	logs := new(bytes.Buffer)
+
+	_, err = io.Copy(logs, logStream)
+	if err != nil {
+		status.Failure("Error copying pod log file: %v", err)
+		return ""
+	}
+
+	return logs.String()
 }
 
 func nodeAffinity(scheduling schedulingType) *v1.Affinity {
