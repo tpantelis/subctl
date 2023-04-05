@@ -135,7 +135,7 @@ func init() {
 }
 
 func addVerifyFlags(cmd *cobra.Command) {
-	cmd.Flags().BoolVar(&verboseConnectivityVerification, "verbose", false, "produce verbose logs during connectivity verification")
+	cmd.Flags().BoolVar(&verboseConnectivityVerification, "verbose", true, "produce verbose logs during connectivity verification")
 	cmd.Flags().UintVar(&operationTimeout, "operation-timeout", 240, "operation timeout for K8s API calls")
 	cmd.Flags().UintVar(&connectionTimeout, "connection-timeout", 60, "timeout in seconds per connection attempt")
 	cmd.Flags().UintVar(&connectionAttempts, "connection-attempts", 2, "maximum number of connection attempts")
@@ -296,6 +296,7 @@ func runVerify(
 	suiteConfig.RandomSeed = 1
 	reporterConfig.Verbose = verboseConnectivityVerification
 	reporterConfig.JUnitReport = junitReport
+	reporterConfig.FullTrace = true
 	framework.TestContext.SuiteConfig = &suiteConfig
 	framework.TestContext.ReporterConfig = &reporterConfig
 
