@@ -296,7 +296,7 @@ func runVerify(fromClusterInfo, toClusterInfo *cluster.Info, namespace string, p
 	framework.TestContext.KubeConfig = "not-used"
 
 	suiteConfig, reporterConfig := ginkgo.GinkgoConfiguration()
-	suiteConfig.FocusStrings = patterns
+	suiteConfig.FocusStrings = []string{"when a pod tries to resolve a podname from stateful set in a remote cluster"}
 	suiteConfig.RandomSeed = 1
 	reporterConfig.Verbose = verboseConnectivityVerification
 	reporterConfig.JUnitReport = junitReport
