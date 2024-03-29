@@ -30,11 +30,11 @@ import (
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
 	"github.com/spf13/cobra"
 	"github.com/submariner-io/admiral/pkg/reporter"
 	"github.com/submariner-io/lighthouse/test/e2e/discovery"
 	_ "github.com/submariner-io/lighthouse/test/e2e/framework"
-	"github.com/submariner-io/shipyard/test/e2e"
 	"github.com/submariner-io/shipyard/test/e2e/framework"
 	"github.com/submariner-io/subctl/internal/cli"
 	"github.com/submariner-io/subctl/internal/component"
@@ -47,6 +47,8 @@ import (
 	"github.com/submariner-io/submariner/test/e2e/redundancy"
 	"k8s.io/client-go/rest"
 )
+
+const globalnetLabel = "globalnet"
 
 var (
 	verboseConnectivityVerification bool
@@ -169,9 +171,9 @@ func checkVerifyArguments(cmd *cobra.Command, args []string) error {
 }
 
 var verifyE2ESpecLabels = map[string]string{
-	component.Connectivity: dataplane.TestLabel,
-	fmt.Sprintf("%s-%s", framework.BasicTestLabel, component.Connectivity): fmt.Sprintf("%s&&%s",
-		dataplane.TestLabel, framework.BasicTestLabel),
+	component.Connectivity: fmt.Sprintf("%s&&!%s", dataplane.TestLabel, globalnetLabel),
+	fmt.Sprintf("%s-%s", framework.BasicTestLabel, component.Connectivity): fmt.Sprintf("%s&&%s&&!%s",
+		dataplane.TestLabel, framework.BasicTestLabel, globalnetLabel),
 	component.ServiceDiscovery: discovery.TestLabel,
 	"compliance":               compliance.TestLabel,
 }
@@ -316,14 +318,39 @@ func runVerify(fromClusterInfo, toClusterInfo, extraClusterInfo *cluster.Info, n
 	framework.TestContext.KubeConfig = "not-used"
 
 	suiteConfig, reporterConfig := ginkgo.GinkgoConfiguration()
-	suiteConfig.LabelFilter = strings.Join(specLabels, ",")
 	suiteConfig.RandomSeed = 1
-	reporterConfig.Verbose = verboseConnectivityVerification
-	reporterConfig.JUnitReport = junitReport
-	framework.TestContext.SuiteConfig = &suiteConfig
-	framework.TestContext.ReporterConfig = &reporterConfig
+	suiteConfig.LabelFilter = strings.Join(specLabels, "||")
 
-	if !e2e.RunE2ETests(&testing.T{}) {
+	if fromClusterInfo.Submariner.Spec.GlobalCIDR != "" {
+		suiteConfig.LabelFilter = strings.ReplaceAll(suiteConfig.LabelFilter, "!"+globalnetLabel, globalnetLabel)
+	}
+
+	reporterConfig.Verbose = true
+	reporterConfig.JUnitReport = junitReport
+
+	if verboseConnectivityVerification {
+		framework.SetStatusFunction(func(s string) {
+			ginkgo.By(s)
+		})
+	} else {
+		framework.SetStatusFunction(func(_ string) {
+		})
+	}
+
+	framework.SetFailFunction(func(text string) {
+		ginkgo.Fail(text)
+	})
+
+	framework.SetUserAgentFunction(func() string {
+		return fmt.Sprintf("%v -- %v", rest.DefaultKubernetesUserAgent(), ginkgo.CurrentSpecReport().FullText())
+	})
+
+	gomega.RegisterFailHandler(ginkgo.Fail)
+
+	framework.BeforeSuite()
+	defer framework.RunCleanupActions()
+
+	if !ginkgo.RunSpecs(&testing.T{}, "Submariner E2E suite", suiteConfig, reporterConfig) {
 		return fmt.Errorf("E2E failed")
 	}
 

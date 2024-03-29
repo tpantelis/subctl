@@ -220,9 +220,11 @@ if [[ "${LIGHTHOUSE}" != true ]]; then
 
   # Test subctl verify basic
 
-  _subctl verify --context cluster1 --tocontext cluster2 --only basic-connectivity --verbose
+  _subctl verify --context cluster1 --tocontext cluster2 --only basic-connectivity
+  _subctl verify --context cluster1 --tocontext cluster2 --only connectivity
 else
-  _subctl verify --context cluster1 --tocontext cluster2 --extracontext cluster3 --only service-discovery --verbose
+  _subctl verify --context cluster1 --tocontext cluster2 --extracontext cluster3 --only service-discovery
+  _subctl verify --context cluster1 --tocontext cluster2 --extracontext cluster3 --only service-discovery,connectivity
 fi
 
 # Test subctl cloud prepare invocations
