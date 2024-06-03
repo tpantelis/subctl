@@ -16,13 +16,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        globalnet: ['', 'globalnet']
-        lighthouse: ['', 'lighthouse']
+        globalnet: ['globalnet']
+        lighthouse: ['']
         ovn: ['']
-        include:
-          - ovn: 'ovn'
-            lighthouse: 'lighthouse'
-            globalnet: 'globalnet'
     steps:
       - name: Check out the repository
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29
@@ -33,5 +29,5 @@ jobs:
           using: ${{ matrix.globalnet }} ${{ matrix.lighthouse }} ${{ matrix.ovn }}
 
       - name: Post mortem
-        if: failure()
+        if: always()
         uses: submariner-io/shipyard/gh-actions/post-mortem@devel
