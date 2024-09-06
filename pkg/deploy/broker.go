@@ -31,6 +31,7 @@ import (
 	"github.com/submariner-io/subctl/pkg/image"
 	"github.com/submariner-io/subctl/pkg/operator"
 	operatorv1alpha1 "github.com/submariner-io/submariner-operator/api/v1alpha1"
+	"github.com/submariner-io/submariner-operator/pkg/cidr"
 	"github.com/submariner-io/submariner-operator/pkg/crd"
 	"github.com/submariner-io/submariner-operator/pkg/discovery/globalnet"
 	"golang.org/x/net/http/httpproxy"
@@ -142,5 +143,5 @@ func checkGlobalnetConfig(options *BrokerOptions) error {
 		return err
 	}
 
-	return globalnet.IsValidCIDR(options.BrokerSpec.GlobalnetCIDRRange)
+	return cidr.IsValid(options.BrokerSpec.GlobalnetCIDRRange)
 }
